@@ -1,0 +1,13 @@
+INPUT FILE: 6QvdOqny46w_all_20260217_221526__tr__20260217_223036.csv
+
+=== BASIC STATS ===
+Comments: 217
+Unique authors: 85
+Avg words: 13.65
+Avg chars: 102.42
+
+=== OUTPUT FILES ===
+Top words: top_words_20260217_223428.csv
+Top bigrams: top_bigrams_20260217_223428.csv
+Top liked comments: top_liked_comments_20260217_223428.csv
+Time distribution: time_distribution_20260217_223428.csv
