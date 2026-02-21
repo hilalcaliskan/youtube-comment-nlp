@@ -1,3 +1,4 @@
+# src/fetch_comments.py
 import os
 import re
 from urllib.parse import urlparse, parse_qs
@@ -11,9 +12,6 @@ from googleapiclient.errors import HttpError
 
 
 def extract_video_id(url_or_id: str) -> str:
-    """
-    Accepts a full YouTube URL (watch/shorts/youtu.be) or a raw video_id and returns the video_id.
-    """
     s = url_or_id.strip()
 
     # Raw video_id (usually 11 chars)
@@ -38,10 +36,6 @@ def extract_video_id(url_or_id: str) -> str:
 
 
 def fetch_replies(youtube, parent_id: str) -> list[dict]:
-    """
-    Fetch ALL replies for a given top-level comment using comments().list(parentId=...),
-    handling pagination.
-    """
     rows = []
     next_page_token = None
 
@@ -81,10 +75,6 @@ def fetch_all_comments(
     include_replies: bool = True,
     order: str = "relevance",  # "time" (newest) or "relevance" (top)
 ) -> pd.DataFrame:
-    """
-    Fetch top-level comments via commentThreads.list.
-    If include_replies=True, fetch ALL replies via comments.list(parentId=...).
-    """
     youtube = build("youtube", "v3", developerKey=api_key)
 
     rows = []
@@ -135,27 +125,23 @@ def fetch_all_comments(
     return pd.DataFrame(rows)
 
 
-def save_three_csvs(df: pd.DataFrame, video_id: str) -> None:
+def save_three_csvs(df: pd.DataFrame, run_path: Path) -> dict[str, Path]:
     """
-    Save:
-      1) top-level only
-      2) replies only
-      3) all together
-    Each with a timestamp so files never overwrite.
-    Always saves into PROJECT ROOT /data.
+    Save into:
+      <run_path>/raw/top.csv
+      <run_path>/raw/replies.csv
+      <run_path>/raw/all.csv
+    Returns the written paths.
     """
-    project_root = Path(__file__).resolve().parents[1]  # src'nin bir üstü
-    data_dir = project_root / "data"
-    data_dir.mkdir(exist_ok=True)
-
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    raw_dir = run_path / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
 
     top_df = df[df["parent_id"].isna()].copy()
     rep_df = df[df["parent_id"].notna()].copy()
 
-    top_path = data_dir / f"{video_id}_top_{stamp}.csv"
-    rep_path = data_dir / f"{video_id}_replies_{stamp}.csv"
-    all_path = data_dir / f"{video_id}_all_{stamp}.csv"
+    top_path = raw_dir / "top.csv"
+    rep_path = raw_dir / "replies.csv"
+    all_path = raw_dir / "all.csv"
 
     top_df.to_csv(top_path, index=False, encoding="utf-8")
     rep_df.to_csv(rep_path, index=False, encoding="utf-8")
@@ -165,8 +151,33 @@ def save_three_csvs(df: pd.DataFrame, video_id: str) -> None:
     print(f"✅ Replies:   {len(rep_df)} -> {rep_path}")
     print(f"✅ Total:     {len(df)} -> {all_path}")
 
+    return {"top": top_path, "replies": rep_path, "all": all_path}
+
+
+def fetch_and_save(
+    api_key: str,
+    video_id: str,
+    run_path: Path,
+    include_replies: bool = True,
+    order: str = "relevance",
+) -> dict[str, Path]:
+    """
+    Pipeline entry-point.
+    """
+    df = fetch_all_comments(
+        api_key=api_key,
+        video_id=video_id,
+        include_replies=include_replies,
+        order=order,
+    )
+    return save_three_csvs(df, run_path)
+
 
 def main():
+    """
+    Opsiyonel CLI kullanım (run_pipeline olmadan).
+    Bu modda da runs klasörü altında tek run üretir.
+    """
     load_dotenv()
     api_key = os.getenv("YOUTUBE_API_KEY")
     if not api_key:
@@ -175,14 +186,15 @@ def main():
     url_or_id = input("YouTube linki veya video_id gir: ").strip()
     video_id = extract_video_id(url_or_id)
 
-    df = fetch_all_comments(
-        api_key=api_key,
-        video_id=video_id,
-        include_replies=True,      # tek çekimde hepsini al
-        order="relevance",         # istersen "time"
-    )
+    # Basit run folder
+    project_root = Path(__file__).resolve().parents[1]
+    runs_dir = project_root / "runs"
+    runs_dir.mkdir(exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_path = runs_dir / f"{stamp}__{video_id}"
+    (run_path / "raw").mkdir(parents=True, exist_ok=True)
 
-    save_three_csvs(df, video_id)
+    fetch_and_save(api_key, video_id, run_path, include_replies=True, order="relevance")
 
 
 if __name__ == "__main__":

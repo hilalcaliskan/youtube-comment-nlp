@@ -1,23 +1,26 @@
+# src/preprocess.py
 import re
 import html
 from pathlib import Path
-from datetime import datetime
 import argparse
 
 import pandas as pd
 from unidecode import unidecode
 from lingua import Language, LanguageDetectorBuilder
 
+# Optional stemming (hafif). İstersen kapalı kullan.
+try:
+    from nltk.stem.snowball import SnowballStemmer
+    HAS_STEM = True
+except Exception:
+    HAS_STEM = False
 
-# ---------------------------
-# Config
-# ---------------------------
-ANALYZE_THRESHOLD = 0.20  # %20 ve üstü analiz edilecek
-MIN_ALPHA_CHARS = 8       # dil tespiti için minimum harf sayısı
-MIN_WORDS = 2             # çok kısa yorumları unknown yap
-KEEP_EMOJIS = True        # emoji kalsın mı?
 
-# TR/EN stopword (hafif liste; istersek büyütürüz)
+ANALYZE_THRESHOLD = 0.20
+MIN_ALPHA_CHARS = 8
+MIN_WORDS = 2
+KEEP_EMOJIS = True
+
 TR_STOP = {
     "ve", "ile", "ama", "fakat", "çünkü", "çok", "bir", "bu", "şu", "o", "da", "de",
     "mi", "mı", "mu", "mü", "için", "gibi", "daha", "en", "şey", "ben", "sen", "biz",
@@ -35,23 +38,10 @@ LANG_MAP = {
 }
 
 
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-
-def load_latest_csvs(data_dir: Path) -> list[Path]:
-    # data/*.csv içindeki comment dosyalarını bul
-    files = sorted(data_dir.glob("*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
-    # çok alakasız csv’ler varsa filtrelemek için:
-    files = [f for f in files if "_top_" in f.name or "_replies_" in f.name or "_all_" in f.name]
-    return files
-
-
 def is_low_signal(text: str) -> bool:
     if not text:
         return True
-    t = text.strip()
-    # çok kısa / sadece emoji / sadece noktalama
+    t = str(text).strip()
     words = re.findall(r"\w+", t, flags=re.UNICODE)
     if len(words) < MIN_WORDS:
         return True
@@ -70,86 +60,100 @@ def detect_language(detector, text: str) -> str:
         return "unknown"
 
     top = langs[0]
-    # lingua confidence 0-1 arası; çok düşükse unknown diyelim
     if top.value < 0.35:
         return "unknown"
 
     return LANG_MAP.get(top.language, "other")
 
 
-def clean_text(text: str, lang: str) -> str:
+def normalize_repeated_chars(s: str) -> str:
+    # “çoooook” -> “çoook” gibi çok basit azaltma
+    return re.sub(r"(.)\1{3,}", r"\1\1", s, flags=re.UNICODE)
+
+
+def tokenize(text: str) -> list[str]:
+    if not isinstance(text, str):
+        return []
+    return re.findall(r"[a-zA-ZçğıöşüÇĞİÖŞÜ0-9]+", text.lower(), flags=re.UNICODE)
+
+
+def maybe_stem(tokens: list[str], lang: str, enable: bool) -> list[str]:
+    if not enable:
+        return tokens
+    if not HAS_STEM:
+        return tokens
+
+    if lang == "tr":
+        stemmer = SnowballStemmer("turkish")
+        return [stemmer.stem(t) for t in tokens]
+    if lang == "en":
+        stemmer = SnowballStemmer("english")
+        return [stemmer.stem(t) for t in tokens]
+    return tokens
+
+
+def clean_text(text: str, bucket: str, enable_stem: bool) -> str:
     if text is None:
         return ""
 
-    # HTML entity decode
-    t = html.unescape(text)
-
-    # normalize whitespace
+    t = html.unescape(str(text))
     t = t.replace("\n", " ").replace("\r", " ")
     t = re.sub(r"\s+", " ", t).strip()
 
-    # remove urls
-    t = re.sub(r"http\S+|www\.\S+", " ", t)
+    t = normalize_repeated_chars(t)
 
-    # remove mentions (YouTube'da @user)
+    # URLs / mentions
+    t = re.sub(r"http\S+|www\.\S+", " ", t)
     t = re.sub(r"@\w+", " ", t)
 
-    # keep hashtags words but remove '#'
+    # hashtags kelime kalsın
     t = t.replace("#", "")
 
-    # optionally remove emojis & symbols
     if not KEEP_EMOJIS:
-        t = re.sub(r"[\U00010000-\U0010ffff]", " ", t)  # emoji range (basic)
+        t = re.sub(r"[\U00010000-\U0010ffff]", " ", t)
 
-    # lowercasing (TR/EN)
     t = t.lower()
-
-    # remove extra punct except letters/numbers/spaces
     t = re.sub(r"[^\w\sçğıöşü]", " ", t, flags=re.UNICODE)
     t = re.sub(r"\s+", " ", t).strip()
 
-    # tokenize
-    tokens = t.split()
+    tokens = tokenize(t)
 
-    # stopwords (only for tr/en). For other languages: no stopword removal
-    if lang == "tr":
+    if bucket == "tr":
         tokens = [w for w in tokens if w not in TR_STOP]
-    elif lang == "en":
-        # optional: normalize accents in EN
+        tokens = maybe_stem(tokens, "tr", enable_stem)
+    elif bucket == "en":
         tokens = [unidecode(w) for w in tokens]
         tokens = [w for w in tokens if w not in EN_STOP]
+        tokens = maybe_stem(tokens, "en", enable_stem)
 
     return " ".join(tokens)
 
 
 def decide_analyze_langs(lang_counts: pd.Series, threshold: float) -> set[str]:
-    """
-    lang_counts: counts by lang
-    Returns languages to analyze (>= threshold), excluding unknown/other.
-    """
     total = lang_counts.sum()
     if total == 0:
         return set()
 
     ratios = (lang_counts / total).sort_values(ascending=False)
     analyze = set()
-
     for lang, r in ratios.items():
         if lang in {"unknown", "other"}:
             continue
         if r >= threshold:
             analyze.add(lang)
-
     return analyze
 
 
-def process_file(path: Path, threshold: float):
+def process_file(path: Path, threshold: float, enable_stem: bool):
     df = pd.read_csv(path)
 
     if "text" not in df.columns:
         raise ValueError(f"{path.name} içinde 'text' kolonu yok.")
 
-    # lingua detector (TR+EN + "rest" için auto detect; burada TR/EN hedef, diğerleri other)
+    # ✅ dedup
+    if "comment_id" in df.columns:
+        df = df.drop_duplicates(subset=["comment_id"]).copy()
+
     detector = LanguageDetectorBuilder.from_languages(
         Language.TURKISH, Language.ENGLISH,
         Language.GERMAN, Language.FRENCH, Language.SPANISH,
@@ -160,11 +164,9 @@ def process_file(path: Path, threshold: float):
 
     df["lang"] = df["text"].astype(str).apply(lambda x: detect_language(detector, x))
 
-    # dil dağılımı
     lang_counts = df["lang"].value_counts()
     analyze_langs = decide_analyze_langs(lang_counts, threshold)
 
-    # bucket
     def bucket(lang: str) -> str:
         if lang == "unknown":
             return "unknown"
@@ -173,57 +175,90 @@ def process_file(path: Path, threshold: float):
         return "others"
 
     df["bucket"] = df["lang"].apply(bucket)
+    df["clean_text"] = df.apply(lambda r: clean_text(r["text"], r["bucket"], enable_stem), axis=1)
 
-    # clean_text
-    df["clean_text"] = df.apply(lambda r: clean_text(str(r["text"]), r["bucket"]), axis=1)
-
-    # basic stats
     df["char_count"] = df["clean_text"].astype(str).apply(len)
     df["word_count"] = df["clean_text"].astype(str).apply(lambda x: len(x.split()) if x else 0)
 
     return df, analyze_langs, lang_counts
 
 
+# -----------------------
+# ✅ Pipeline entry-point
+# -----------------------
+def preprocess_run(
+    run_path: Path,
+    threshold: float = ANALYZE_THRESHOLD,
+    stem: bool = False,
+    input_name: str = "all.csv",
+) -> dict[str, Path]:
+    """
+    Input:  <run_path>/raw/<input_name>   (default all.csv)
+    Output: <run_path>/processed/{tr,en,others,unknown}.csv
+    """
+    raw_file = run_path / "raw" / input_name
+    if not raw_file.exists():
+        raise FileNotFoundError(f"Raw input bulunamadı: {raw_file}")
+
+    out_dir = run_path / "processed"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    enable_stem = bool(stem) and HAS_STEM
+
+    df, analyze_langs, lang_counts = process_file(raw_file, threshold, enable_stem)
+
+    print("\n--- Language distribution ---")
+    total = int(lang_counts.sum())
+    for k, v in lang_counts.items():
+        print(f"{k:8s}: {int(v):5d}  ({(v/total) if total else 0:.1%})")
+    print(f"Analyze langs (>= {threshold:.0%}): {sorted(list(analyze_langs))}")
+    if stem and not HAS_STEM:
+        print("⚠️ NLTK yok / stemming pas geçildi. (pip install nltk)")
+
+    outputs: dict[str, Path] = {}
+    for bucket_name, sub in df.groupby("bucket"):
+        out_path = out_dir / f"{bucket_name}.csv"
+        sub.to_csv(out_path, index=False, encoding="utf-8")
+        outputs[bucket_name] = out_path
+        print(f"✅ Saved: {bucket_name:8s} -> {out_path} ({len(sub)})")
+
+    return outputs
+
+
+# -----------------------
+# Optional CLI (debug)
+# -----------------------
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--file", type=str, default="", help="İşlenecek CSV yolu. Boşsa data/ içinden en güncelini alır.")
-    parser.add_argument("--threshold", type=float, default=ANALYZE_THRESHOLD, help="Analiz edilecek dil eşiği (örn 0.20)")
+    parser.add_argument("--file", type=str, default="", help="İşlenecek CSV yolu (debug).")
+    parser.add_argument("--threshold", type=float, default=ANALYZE_THRESHOLD, help="Dil analiz eşiği (örn 0.20)")
+    parser.add_argument("--stem", action="store_true", help="TR/EN için Snowball stemming aç")
     args = parser.parse_args()
 
-    root = project_root()
-    data_dir = root / "data"
-    out_dir = data_dir / "processed"
-    out_dir.mkdir(exist_ok=True)
+    # CLI modunda verilen file'ı işler, aynı klasöre processed yazar (debug amaçlı).
+    if not args.file:
+        raise RuntimeError("--file vermelisin. Pipeline için run_pipeline.py kullan.")
 
-    if args.file:
-        files = [Path(args.file)]
-    else:
-        files = load_latest_csvs(data_dir)
-        if not files:
-            raise RuntimeError("data/ altında *_top_ / *_replies_ / *_all_ CSV bulunamadı.")
+    in_path = Path(args.file)
+    if not in_path.exists():
+        raise FileNotFoundError(in_path)
 
-        # sadece en güncel 3’lü seti işlemek istersen burada kırpabiliriz
-        # şimdilik en güncel dosyayı al:
-        files = [files[0]]
+    out_dir = in_path.parent / "processed"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    for f in files:
-        df, analyze_langs, lang_counts = process_file(f, args.threshold)
+    enable_stem = bool(args.stem) and HAS_STEM
+    df, analyze_langs, lang_counts = process_file(in_path, args.threshold, enable_stem)
 
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base = f.stem  # örn video_all_2026...
+    print("\n--- Language distribution ---")
+    total = int(lang_counts.sum())
+    for k, v in lang_counts.items():
+        print(f"{k:8s}: {int(v):5d}  ({(v/total) if total else 0:.1%})")
+    print(f"Analyze langs (>= {args.threshold:.0%}): {sorted(list(analyze_langs))}")
 
-        # rapor
-        print("\n--- Language distribution ---")
-        total = lang_counts.sum()
-        for k, v in lang_counts.items():
-            print(f"{k:8s}: {v:5d}  ({v/total:.1%})")
-        print(f"Analyze langs (>= {args.threshold:.0%}): {sorted(list(analyze_langs))}")
-
-        # çıktıları bucket bazlı kaydet
-        for bucket_name, sub in df.groupby("bucket"):
-            out_path = out_dir / f"{base}__{bucket_name}__{stamp}.csv"
-            sub.to_csv(out_path, index=False, encoding="utf-8")
-            print(f"✅ Saved: {bucket_name:8s} -> {out_path.name} ({len(sub)})")
+    for bucket_name, sub in df.groupby("bucket"):
+        out_path = out_dir / f"{bucket_name}.csv"
+        sub.to_csv(out_path, index=False, encoding="utf-8")
+        print(f"✅ Saved: {bucket_name:8s} -> {out_path.name} ({len(sub)})")
 
 
 if __name__ == "__main__":
