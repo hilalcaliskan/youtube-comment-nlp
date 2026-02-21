@@ -4,3 +4,15 @@ __pycache__/
 .DS_Store
 .env
 data/*.csv
+
+# Generated data (pipeline outputs)
+runs/
+reports/
+data/
+
+# Ignore all csv outputs
+*.csv
+
+# Python cache
+__pycache__/
+*.pyc
