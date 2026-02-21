@@ -1,18 +1,37 @@
-yt_env/
-__pycache__/
-.ipynb_checkpoints/
-.DS_Store
+# ===============================
+# Environment & secrets
+# ===============================
 .env
-data/*.csv
 
-# Generated data (pipeline outputs)
+# Virtual environments
+.venv/
+venv/
+yt_env/
+
+# ===============================
+# Generated pipeline outputs
+# ===============================
 runs/
 reports/
 data/
 
-# Ignore all csv outputs
+# Ignore all CSV outputs anywhere
 *.csv
 
+# ===============================
 # Python cache
+# ===============================
 __pycache__/
 *.pyc
+
+# ===============================
+# Jupyter / system files
+# ===============================
+.ipynb_checkpoints/
+.DS_Store
+
+# ===============================
+# IDE files
+# ===============================
+.idea/
+.vscode/
