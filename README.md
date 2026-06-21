@@ -20,56 +20,6 @@ The main purpose of this project is to transform unstructured YouTube comments i
 
 ---
 
-## Dashboard Preview
-
-### User Interface
-
-<img src="assets/screenshots/input_userinterface.png" alt="InsightTube User Interface" width="850">
-
-The user interface allows users to enter a YouTube video URL and start the analysis process through a browser-based dashboard.
-
----
-
-### Video Overview
-
-<img src="assets/screenshots/video_overview.png" alt="Video Overview" width="850">
-
-The video overview section displays key video information such as the video title, channel name, video ID, view count, like count, total comment count, analyzed comment count, and thumbnail.
-
----
-
-### Audience Summary
-
-<img src="assets/screenshots/audience_summary.png" alt="Audience Summary" width="850">
-
-The audience summary section provides an AI-generated interpretation of the general audience reaction based on the analyzed comments.
-
----
-
-### Audience Sentiment
-
-<img src="assets/screenshots/audience_sentiment.png" alt="Audience Sentiment Analysis" width="850">
-
-The audience sentiment section shows the distribution of positive, negative, and neutral comments.
-
----
-
-### Topic Distribution
-
-<img src="assets/screenshots/topic_distribution.png" alt="Topic Distribution" width="850">
-
-The topic distribution section visualizes the main discussion topics identified from the comment section.
-
----
-
-### Main Conversation Themes
-
-<img src="assets/screenshots/main_themes.png" alt="Main Conversation Themes" width="850">
-
-The main conversation themes section presents the dominant themes and discussion areas extracted from YouTube comments.
-
----
-
 ## Problem and Motivation
 
 YouTube comments contain valuable information about audience opinions, reactions, expectations, and discussion patterns. However, manually analyzing large volumes of comments is difficult, time-consuming, and inefficient.
@@ -153,6 +103,66 @@ Finally, the system generates AI-supported audience summaries and key findings. 
 
 ---
 
+## Dashboard Preview
+
+### User Interface
+
+<img src="assets/screenshots/input_userinterface.png" alt="InsightTube User Interface" width="850">
+
+The user interface allows users to enter a YouTube video URL and start the analysis process through a browser-based dashboard.
+
+---
+
+### Video Overview
+
+<img src="assets/screenshots/video_overview.png" alt="Video Overview" width="850">
+
+The video overview section displays key video information such as the video title, channel name, video ID, view count, like count, total comment count, analyzed comment count, and thumbnail.
+
+---
+
+### Audience Summary
+
+<img src="assets/screenshots/audience_summary.png" alt="Audience Summary" width="850">
+
+The audience summary section provides an AI-generated interpretation of the general audience reaction based on the analyzed comments.
+
+---
+
+
+### Audience Sentiment
+
+<img src="assets/screenshots/audience_sentiment.png" alt="Audience Sentiment Analysis" width="850">
+
+The audience sentiment section shows the distribution of positive, negative, and neutral comments.
+
+---
+
+### Key Findings
+
+<img src="assets/screenshots/key_findings.png" alt="Key Findings" width="850">
+
+The key findings section highlights important patterns, observations, and AI-supported insights derived from the analyzed YouTube comments.
+
+
+---
+
+### Topic Distribution
+
+<img src="assets/screenshots/topic_distribution.png" alt="Topic Distribution" width="850">
+
+The topic distribution section visualizes the main discussion topics identified from the comment section.
+
+---
+
+### Main Conversation Themes
+
+<img src="assets/screenshots/main_themes.png" alt="Main Conversation Themes" width="850">
+
+The main conversation themes section presents the dominant themes and discussion areas extracted from YouTube comments.
+
+---
+
 ## Technologies Used
 
 ### Programming Language
@@ -199,35 +209,6 @@ Finally, the system generates AI-supported audience summaries and key findings. 
 * Git
 * GitHub
 
----
-
-## Dashboard Outputs
-
-InsightTube provides multiple dashboard outputs to help users understand audience reactions and discussion patterns.
-
-### Video Overview
-
-The video overview section displays key video information such as video title, channel name, video ID, view count, like count, total comment count, analyzed comment count, and thumbnail.
-
-### Audience Summary
-
-This section provides an AI-generated summary of the overall audience reaction. It helps users quickly understand the general tone and main audience response.
-
-### Audience Sentiment
-
-The sentiment analysis section shows the distribution of positive, negative, and neutral comments. This helps users understand the emotional polarity of the audience.
-
-### Topic Distribution
-
-The topic distribution section identifies and visualizes the main topics discussed by the audience.
-
-### Main Conversation Themes
-
-This section presents the dominant themes and discussion areas extracted from YouTube comments. It helps users understand what the audience is mainly talking about.
-
-### Key Findings
-
-The key findings section highlights important patterns, observations, and insights derived from the analyzed comments.
 
 ---
 
@@ -246,20 +227,25 @@ youtube_nlp_project/
 │       ├── audience_sentiment.png
 │       ├── audience_summary.png
 │       ├── input_userinterface.png
+│       ├── key_findings.png
 │       ├── main_themes.png
 │       ├── topic_distribution.png
 │       └── video_overview.png
 │
-├── data/
+├── runs/
 │   ├── raw/
-│   └── processed/
+│   ├── processed/
+│   └── reports/
 │
 ├── src/
+│   ├── ai_interpretation.py
+│   ├── analyze_basic.py
+│   ├── analyze_sentiment.py
+│   ├── analyze_topic.py
+│   ├── evaluate_model.py
 │   ├── fetch_comments.py
 │   ├── preprocess.py
-│   ├── analyze_basic.py
-│   ├── evaluate_model.py
-│   └── ...
+│   └── run_pipeline.py
 │
 ├── requirements.txt
 ├── README.md
